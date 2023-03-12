@@ -16,6 +16,7 @@ _M.settings_parser = settings_parser {
 	divide_by_output = {'o', 'bool'},
 	differ_output = {'d', 'bool'},
 	time_multiplier = {'t', 'number'},
+	all_inputs = {'a', 'bool'},
 }
 
 
@@ -174,45 +175,80 @@ function _M:find_recipe()
 end
 
 function _M:find_ingredients_and_products()
-	local changed, recipe, input_count = recipe_selector.get_recipe(
-		self.entity,
-		defines.circuit_connector_id.combinator_input,
-		self.last_name,
-		self.settings.multiply_by_input and self.last_count or nil
-	)
+	local changed, recipes, input_count, last_signals
+	if self.settings.all_inputs then
+		changed, recipes, last_signals = recipe_selector.get_all_recipes(
+			self.entity,
+			defines.circuit_connector_id.combinator_input,
+			self.last_signals
+		)
+		if not changed then return ; end
+
+		self.last_signals = last_signals
+		self.last_name = nil
+		self.last_count = nil
+
+	else
+		local changed, recipe, input_count = recipe_selector.get_recipe(
+			self.entity,
+			defines.circuit_connector_id.combinator_input,
+			self.last_name,
+			self.settings.multiply_by_input and self.last_count or nil
+		)
+
+		if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
+		recipes={{recipe=recipe}}
+
+
+		if not changed then return ; end
 	
-	if not changed then return; end
+		self.last_name = recipe and recipe.name
+		self.last_count = input_count
+		
+		self.last_signals = nil
+		
+		if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
+	end
 	
-	self.last_name = recipe and recipe.name
-	self.last_count = input_count
-	
-	if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
 	
 	local params = {}
-	
-	if recipe then
-		local crafting_multiplier = self.settings.multiply_by_input and input_count or 1
-		for i, ing in pairs(
-					self.settings.mode == 'prod' and recipe.products or
-					self.settings.mode == 'ing' and recipe.ingredients or {}
-				) do
-			local amount = math.ceil(
-				tonumber(ing.amount or ing.amount_min or ing.amount_max) * crafting_multiplier
-				* (tonumber(ing.probability) or 1)
-			)
-			
+
+	local ingredients = {}
+
+	local crafting_multiplier = self.settings.multiply_by_input and input_count or 1
+
+	-- for every recipe
+	for _, c_recipe in pairs(recipes) do
+		local recipe = c_recipe.recipe
+		
+		if recipe and recipe.energy then
+			-- for every ingredient/product
+			for _, ing in pairs(
+						self.settings.mode == 'prod' and recipe.products or
+						self.settings.mode == 'ing' and recipe.ingredients or {}
+					) do
+				
+				local amount = math.ceil(
+					tonumber(ing.amount or ing.amount_min or ing.amount_max) * crafting_multiplier
+					* (tonumber(ing.probability) or 1)
+				)
+				if ing.type == "item" then
+					ingredients[ing.name] = (ingredients[ing.name] or 0) +
+						(util.simulate_overflow(amount))
+				end
+
+			end
+		end
+
+		local i = 1
+		for name, count in pairs(ingredients) do
 			params[i] = {
-				signal = {type = ing.type, name = ing.name},
-				count = self.settings.differ_output and i or util.simulate_overflow(amount),
+				signal = {type="item", name=name},
+				count = self.settings.differ_output and i or count,
 				index = i,
 			}
+			i = i + 1
 		end
-		
-		table.insert(params, {
-			signal = {type = 'virtual', name = config.TIME_SIGNAL_NAME},
-			count = util.simulate_overflow(math.floor(tonumber(recipe.energy) * self.settings.time_multiplier * crafting_multiplier)),
-			index = _M.get_rc_slot_count(),
-		})
 	end
 	
 	self.control_behavior.parameters = params
@@ -274,6 +310,7 @@ function _M:open(player_index)
 			gui.checkbox('multiply-by-input', self.settings.multiply_by_input, {tooltip=true}),
 			gui.checkbox('divide-by-output', self.settings.divide_by_output, {tooltip=true}),
 			gui.checkbox('differ-output', self.settings.differ_output, {tooltip=true}),
+			gui.checkbox('all-inputs', self.settings.all_inputs, {tooltip=true}),
 			gui.number_picker('time-multiplier', self.settings.time_multiplier),
 		}
 	}):open(player_index)

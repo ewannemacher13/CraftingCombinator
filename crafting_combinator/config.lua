@@ -31,6 +31,7 @@ return {
 		divide_by_output = false,
 		differ_output = false,
 		time_multiplier = 0,
+		all_inputs = true,
 	},
 	
 	ASSEMBLER_DISTANCE = 1,
