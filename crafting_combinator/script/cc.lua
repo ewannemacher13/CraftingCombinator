@@ -38,6 +38,7 @@ _M.settings_parser = settings_parser {
 	read_recipe = {'r', 'bool'},
 	read_speed = {'s', 'bool'},
 	read_machine_status = {'st', 'bool'},
+	read_contents = {'co', 'bool'},
 	wait_for_output_to_clear = {'wo', 'bool'},
 }
 
@@ -194,6 +195,7 @@ function _M:update()
 			if self.settings.read_recipe then self:read_recipe(params); end
 			if self.settings.read_speed then self:read_speed(params); end
 			if self.settings.read_machine_status then self:read_machine_status(params); end
+			if self.settings.read_contents then self:read_contents(params); end
 		end
 	end
 	
@@ -223,6 +225,7 @@ function _M:open(player_index)
 			gui.checkbox('read-recipe', self.settings.read_recipe),
 			gui.checkbox('read-speed', self.settings.read_speed),
 			gui.checkbox('read-machine-status', self.settings.read_machine_status),
+			gui.checkbox('read-contents', self.settings.read_contents)
 		}
 	}):open(player_index)
 	
@@ -259,6 +262,7 @@ function _M:update_disabled_checkboxes(root)
 	self:disable_checkbox(root, 'misc:read-recipe', 'r')
 	self:disable_checkbox(root, 'misc:read-speed', 'r')
 	self:disable_checkbox(root, 'misc:read-machine-status', 'r')
+	self:disable_checkbox(root, 'misc:read-contents', 'r')
 end
 
 function _M:disable_checkbox(root, name, mode)
@@ -312,6 +316,46 @@ function _M:read_machine_status(params)
 		index = 3,
 	})
 end
+
+function _M:read_contents(params)
+	local contents = {}
+	local input_items = self.inventories.assembler and self.inventories.assembler.input
+	local output_items = self.inventories.assembler and self.inventories.assembler.output
+	
+	if input_items then
+		for name, count in pairs(input_items.get_contents()) do
+			contents[name] = (contents[name] or 0) + count
+		end
+	end
+	
+	if output_items then
+		for name, count in pairs(output_items.get_contents()) do
+			contents[name] = (contents[name] or 0) + count
+		end
+	end
+
+	if self.assembler.status == defines.entity_status.working then
+		local a_recipe = self.assembler.get_recipe()
+		if a_recipe then
+			for _, ing in pairs(a_recipe.ingredients) do
+				contents[ing.name] = (contents[ing.name] or 0) + ing.amount
+			end
+		end
+	end
+	
+	local i = 4
+	if contents then
+		for name, count in pairs(contents) do
+			table.insert(params, {
+				signal = recipe_selector.get_signal(name),
+				count = count,
+				index = i,
+			})
+			i = i + 1
+		end
+	end
+end
+
 
 function _M:set_recipe()
 	local changed, recipe

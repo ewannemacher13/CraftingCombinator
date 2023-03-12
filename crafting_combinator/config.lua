@@ -23,13 +23,14 @@ return {
 		read_recipe = true,
 		read_speed = false,
 		read_bottleneck = false,
+		read_contents = false,
 	},
 	RC_DEFAULT_SETTINGS = {
 		mode = 'ing',
-		multiply_by_input = false,
+		multiply_by_input = true,
 		divide_by_output = false,
 		differ_output = false,
-		time_multiplier = 10,
+		time_multiplier = 0,
 	},
 	
 	ASSEMBLER_DISTANCE = 1,
