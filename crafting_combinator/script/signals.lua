@@ -97,7 +97,7 @@ function _M.get_merged_signal(entity, signal, circuit_id)
 end
 
 
-function _M.get_highest(entity, circuit_id, update_count)
+function _M.get_highest(entity, circuit_id, update_count, ensure_has_recipe)
 	local cache = _M.cache.get(entity, circuit_id)
 	
 	if cache.highest.valid
@@ -119,7 +119,7 @@ function _M.get_highest(entity, circuit_id, update_count)
 	
 	local highest = nil
 	for _, signal in pairs(_M.get_merged_signals(entity, circuit_id)) do
-		if highest == nil or signal.count > highest.count then highest = signal; end
+		if (highest == nil or signal.count > highest.count) and (ensure_has_recipe and entity.force.recipes[signal.signal.name]) then highest = signal; end
 	end
 	
 	cache.highest.valid = true

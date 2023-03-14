@@ -7,23 +7,26 @@ function _M.get_all_recipes(entity, circuit_id, last_signals)
 	local all_signals = signals.get_merged_signals(entity, circuit_id)
 	
 	if last_signals then
-		local changed = false
+		if #last_signals ~= #all_signals then
+			return false; end
+
 		for k, v in pairs(all_signals) do
 			local equiv = last_signals[k]
-			if not equiv or equiv.signal.name ~= v.signal.name or equiv.count ~= v.count then
-				changed = true
-				break
+			if not equiv
+				or equiv.signal.name ~= v.signal.name
+				or equiv.count ~= v.count
+				then return false
 			end
 		end
-
-		if not changed then return false end;
 	end
 
 	local recipes = {}
 
 	for i, signal in pairs(all_signals) do
-		local recipe = entity.force.recipes[signal.signal.name]
-		table.insert(recipes, {count=signal.count, recipe=recipe})
+		if signal.count > 0 then
+			local recipe = entity.force.recipes[signal.signal.name]
+			table.insert(recipes, {count=signal.count, recipe=recipe})
+		end
 	end
 
 	return true, recipes, all_signals
@@ -32,7 +35,7 @@ end
 
 
 function _M.get_recipe(entity, circuit_id, last_name, last_count)
-	local highest = signals.get_highest(entity, circuit_id, last_count ~= nil)
+	local highest = signals.get_highest(entity, circuit_id, last_count ~= nil, true)
 	
 	if not highest then
 		if last_name == nil then return false; end

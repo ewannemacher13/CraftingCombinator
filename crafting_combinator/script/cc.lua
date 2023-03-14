@@ -318,6 +318,7 @@ function _M:read_machine_status(params)
 end
 
 function _M:read_contents(params)
+	local a_recipe = self.assembler.get_recipe()
 	local contents = {}
 	local input_items = self.inventories.assembler and self.inventories.assembler.input
 	local output_items = self.inventories.assembler and self.inventories.assembler.output
@@ -335,7 +336,7 @@ function _M:read_contents(params)
 	end
 
 	if self.assembler.status == defines.entity_status.working then
-		local a_recipe = self.assembler.get_recipe()
+		-- local a_recipe = self.assembler.get_recipe()
 		if a_recipe then
 			for _, ing in pairs(a_recipe.ingredients) do
 				contents[ing.name] = (contents[ing.name] or 0) + ing.amount

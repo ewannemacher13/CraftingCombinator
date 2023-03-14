@@ -117,6 +117,7 @@ end
 function _M:update(forced)
 	if forced then
 		self.last_signal = false
+		self.last_signals = false
 		self.last_name = false
 		self.last_count = false
 	end
@@ -182,11 +183,12 @@ function _M:find_ingredients_and_products()
 			defines.circuit_connector_id.combinator_input,
 			self.last_signals
 		)
-		if not changed then return ; end
 
 		self.last_signals = last_signals
-		self.last_name = nil
-		self.last_count = nil
+		if not changed then return ; end
+
+		self.last_name = false
+		self.last_count = false
 
 	else
 		local changed, recipe, input_count = recipe_selector.get_recipe(
@@ -196,18 +198,14 @@ function _M:find_ingredients_and_products()
 			self.settings.multiply_by_input and self.last_count or nil
 		)
 
-		if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
-		recipes={{recipe=recipe}}
-
+		recipes={{count=input_count, recipe=recipe}}
 
 		if not changed then return ; end
 	
 		self.last_name = recipe and recipe.name
 		self.last_count = input_count
+		self.last_signals = false
 		
-		self.last_signals = nil
-		
-		if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
 	end
 	
 	
@@ -215,19 +213,20 @@ function _M:find_ingredients_and_products()
 
 	local ingredients = {}
 
-	local crafting_multiplier = self.settings.multiply_by_input and input_count or 1
 
 	-- for every recipe
 	for _, c_recipe in pairs(recipes) do
 		local recipe = c_recipe.recipe
+		if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
 		
 		if recipe and recipe.energy then
-			-- for every ingredient/product
+			
+			local crafting_multiplier = self.settings.multiply_by_input and c_recipe.count or 1
 			for _, ing in pairs(
 						self.settings.mode == 'prod' and recipe.products or
 						self.settings.mode == 'ing' and recipe.ingredients or {}
 					) do
-				
+			
 				local amount = math.ceil(
 					tonumber(ing.amount or ing.amount_min or ing.amount_max) * crafting_multiplier
 					* (tonumber(ing.probability) or 1)
