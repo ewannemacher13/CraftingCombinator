@@ -173,6 +173,31 @@ function _M:find_recipe()
 	self.control_behavior.parameters = params
 end
 
+function _M:find_recursive_ingredients(entity, signals, recipe, input_count, depth)
+	if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
+	if not recipe then return {}; end
+
+	local crafting_multiplier = self.settings.multiply_by_input and input_count or 1
+
+	local ingredients = {}
+	for i, ing in pairs(recipe.ingredients or {}) do
+
+		local amount = math.ceil(
+			tonumber(ing.amount or ing.amount_min or ing.amount_max) * crafting_multiplier
+			* (tonumber(ing.probability) or 1)
+		)
+
+		ingredients[ing.name] = {
+			name=ing.name,
+			type=ing.type,
+			amount=amount,
+			ingredients=self:find_recursive_ingredients(entity, signals, entity.force.recipes[ing.name], amount, (depth or 1) + 1)
+		}
+	end
+	return ingredients
+
+end
+
 function _M:find_ingredients_and_products()
 	local changed, recipe, input_count = recipe_selector.get_recipe(
 		self.entity,
@@ -182,6 +207,17 @@ function _M:find_ingredients_and_products()
 	)
 	
 	if not changed then return; end
+
+	if recipe and recipe.name == "electric-motor" then
+		local ingredients = self:find_recursive_ingredients(
+			self.entity,
+			self.entity.get_merged_signals(defines.circuit_connector_id.combinator_input),
+			recipe,
+			input_count
+		)
+		-- game.print(string.format('number of ingredients: %d', #ingredients))
+		-- game.print(string.format('final ingredient list for %s: %s', recipe.name, serpent.block(ingredients)))
+	end
 	
 	self.last_name = recipe and recipe.name
 	self.last_count = input_count
