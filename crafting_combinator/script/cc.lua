@@ -81,7 +81,13 @@ function _M.create(entity)
 	combinator.inventories.module_chest = combinator.module_chest.get_inventory(defines.inventory.chest)
 
 	global.cc.data[entity.unit_number] = combinator
-	table.insert(global.cc.ordered, combinator)
+	local pos = 1
+	for i, cc in pairs(global.cc.ordered) do
+		if cc.settings.mode == 'w' then
+			pos = i
+		end
+	end
+	table.insert(global.cc.ordered, pos, combinator)
 	combinator:find_assembler()
 	combinator:find_chest()
 
