@@ -7,11 +7,12 @@ local signals = require 'script.signals'
 
 
 local _M = {}
-local combinator_mt = {__index = _M}
+local combinator_mt = { __index = _M }
 
 
-local CHEST_POSITION_NAMES = {'behind', 'left', 'right', 'behind-left', 'behind-right'}
-local CHEST_POSITIONS = {}; for key, name in pairs(CHEST_POSITION_NAMES) do CHEST_POSITIONS[name] = key; end
+local CHEST_POSITION_NAMES = { 'behind', 'left', 'right', 'behind-left', 'behind-right' }
+local CHEST_POSITIONS = {};
+for key, name in pairs(CHEST_POSITION_NAMES) do CHEST_POSITIONS[name] = key; end
 local CHEST_DIRECTIONS = {
 	[CHEST_POSITIONS.behind] = 180,
 	[CHEST_POSITIONS.right] = 90,
@@ -29,17 +30,17 @@ end
 
 
 _M.settings_parser = settings_parser {
-	chest_position = {'c', 'int'},
-	mode = {'m', 'string'},
-	discard_items = {'d', 'bool'},
-	discard_fluids = {'f', 'bool'},
-	empty_inserters = {'i', 'bool'},
-	craft_until_zero = {'z', 'bool'},
-	read_recipe = {'r', 'bool'},
-	read_speed = {'s', 'bool'},
-	read_machine_status = {'st', 'bool'},
-	read_contents = {'co', 'bool'},
-	wait_for_output_to_clear = {'wo', 'bool'},
+	chest_position = { 'c', 'int' },
+	mode = { 'm', 'string' },
+	discard_items = { 'd', 'bool' },
+	discard_fluids = { 'f', 'bool' },
+	empty_inserters = { 'i', 'bool' },
+	craft_until_zero = { 'z', 'bool' },
+	read_recipe = { 'r', 'bool' },
+	read_speed = { 's', 'bool' },
+	read_machine_status = { 'st', 'bool' },
+	read_contents = { 'co', 'bool' },
+	wait_for_output_to_clear = { 'wo', 'bool' },
 }
 
 
@@ -55,7 +56,6 @@ end
 function _M.on_load()
 	for _, combinator in pairs(global.cc.data) do setmetatable(combinator, combinator_mt); end
 end
-
 
 -- Lifecycle events
 
@@ -76,15 +76,21 @@ function _M.create(entity)
 		enabled = true,
 		last_recipe = false,
 	}, combinator_mt)
-	
+
 	combinator.module_chest.destructible = false
 	combinator.inventories.module_chest = combinator.module_chest.get_inventory(defines.inventory.chest)
-	
+
 	global.cc.data[entity.unit_number] = combinator
-	table.insert(global.cc.ordered, combinator)
+	local pos = 1
+	for i, cc in pairs(global.cc.ordered) do
+		if cc.settings.mode == 'w' then
+			pos = i
+		end
+	end
+	table.insert(global.cc.ordered, pos, combinator)
 	combinator:find_assembler()
 	combinator:find_chest()
-	
+
 	-- Other combinators can use the module chest as overflow output, so let them know it's there
 	_M.update_chests(entity.surface, combinator.module_chest)
 end
@@ -94,11 +100,13 @@ function _M.mark_for_deconstruction(entity)
 	combinator.enabled = false
 	combinator:update()
 end
+
 function _M.cancel_deconstruction(entity)
 	local combinator = global.cc.data[entity.surface.find_entity(config.CC_NAME, entity.position).unit_number]
 	combinator.enabled = true
 	combinator:update()
 end
+
 function _M.fix_undo_deconstruction(entity, player_index)
 	local combinator = global.cc.data[entity.unit_number]
 	local player = player_index and game.get_player(player_index)
@@ -117,7 +125,7 @@ end
 function _M.destroy(entity, player_index)
 	local unit_number = entity.unit_number
 	local combinator = global.cc.data[unit_number]
-	
+
 	if player_index then
 		local inventory = combinator.inventories.module_chest
 		if not inventory.is_empty() then
@@ -129,35 +137,38 @@ function _M.destroy(entity, player_index)
 					if r < stack.count then
 						stack.count = stack.count - r
 						-- Clone the entity as replacement and tell the player the inventory is full
-						game.get_player(player_index).print{'inventory-restriction.player-inventory-full', stack.prototype.localised_name}
-						
+						game.get_player(player_index).print { 'inventory-restriction.player-inventory-full', stack
+							.prototype.localised_name }
+
 						-- Replace the entity if a player was trying to pick it up
 						local old_entity = combinator.entity
 						local old_cb = combinator.control_behavior
-						combinator.entity = old_entity.clone{position = old_entity.position}
+						combinator.entity = old_entity.clone { position = old_entity.position }
 						combinator.control_behavior = combinator.entity.get_or_create_control_behavior()
-						
+
 						global.cc.data[unit_number] = nil
 						global.cc.data[combinator.entity.unit_number] = combinator
-						
+
 						for _, connection in pairs(old_entity.circuit_connection_definitions) do
 							combinator.entity.connect_neighbour(connection)
 						end
-						
+
 						old_entity.destroy()
 						return true -- Inidcate that the original entity was destroyed
-					else stack.clear(); end
+					else
+						stack.clear();
+					end
 				end
 			end
 		end
 	end
-	
+
 	-- Notify other combinators that the chest was destroyed
 	_M.update_chests(entity.surface, combinator.module_chest, true)
 	if player_index then combinator.module_chest.destroy(); end
 	settings_parser.destroy(entity)
 	signals.cache.drop(entity)
-	
+
 	global.cc.data[unit_number] = nil
 	for k, v in pairs(global.cc.ordered) do
 		if v.entity.unit_number == unit_number then
@@ -169,7 +180,8 @@ end
 
 function _M.update_assemblers(surface, assembler, ignore)
 	local combinators = surface.find_entities_filtered {
-		area = util.area(assembler.prototype.selection_box):expand(config.ASSEMBLER_SEARCH_DISTANCE) + assembler.position,
+		area = util.area(assembler.prototype.selection_box):expand(config.ASSEMBLER_SEARCH_DISTANCE) + assembler
+			.position,
 		name = config.CC_NAME,
 	}
 	for _, entity in pairs(combinators) do global.cc.data[entity.unit_number]:find_assembler(ignore and assembler or nil); end
@@ -187,9 +199,9 @@ function _M:update()
 	local params = {}
 	if self.enabled and self.assembler and self.assembler.valid then
 		self.assembler.active = true
-		
+
 		if self.settings.mode == 'w' then
-			self:set_recipe()
+			self:set_recipe(params)
 		end
 		if self.settings.mode == 'r' then
 			if self.settings.read_recipe then self:read_recipe(params); end
@@ -198,37 +210,35 @@ function _M:update()
 			if self.settings.read_contents then self:read_contents(params); end
 		end
 	end
-	
+
 	self.control_behavior.parameters = params
 end
-
 
 function _M:open(player_index)
 	local root = gui.entity(self.entity, {
 		title_elements = {
 			gui.button('open-module-chest'),
-			gui.dropdown('chest-position', CHEST_POSITION_NAMES, self.settings.chest_position, {tooltip=true}),
+			gui.dropdown('chest-position', CHEST_POSITION_NAMES, self.settings.chest_position, { tooltip = true }),
 		},
-		
 		gui.section {
 			name = 'mode',
-			gui.radio('w', self.settings.mode, {locale='mode-write', tooltip=true}),
-			gui.radio('r', self.settings.mode, {locale='mode-read', tooltip=true}),
+			gui.radio('w', self.settings.mode, { locale = 'mode-write', tooltip = true }),
+			gui.radio('r', self.settings.mode, { locale = 'mode-read', tooltip = true }),
 		},
 		gui.section {
 			name = 'misc',
-			gui.checkbox('wait-for-output-to-clear', self.settings.wait_for_output_to_clear, {tooltip = true}),
+			gui.checkbox('wait-for-output-to-clear', self.settings.wait_for_output_to_clear, { tooltip = true }),
 			gui.checkbox('discard-items', self.settings.discard_items),
 			gui.checkbox('discard-fluids', self.settings.discard_fluids),
 			gui.checkbox('empty-inserters', self.settings.empty_inserters),
-			gui.checkbox('craft-until-zero', self.settings.craft_until_zero, {tooltip = true}),
+			gui.checkbox('craft-until-zero', self.settings.craft_until_zero, { tooltip = true }),
 			gui.checkbox('read-recipe', self.settings.read_recipe),
 			gui.checkbox('read-speed', self.settings.read_speed),
 			gui.checkbox('read-machine-status', self.settings.read_machine_status),
 			gui.checkbox('read-contents', self.settings.read_contents)
 		}
 	}):open(player_index)
-	
+
 	self:update_disabled_checkboxes(root)
 end
 
@@ -239,7 +249,7 @@ function _M:on_checked_changed(name, state, element)
 		for _, el in pairs(element.parent.children) do
 			if el.type == 'radiobutton' then
 				local _, _, el_name = gui.parse_entity_gui_name(el.name)
-				el.state = el_name == 'mode:'..name
+				el.state = el_name == 'mode:' .. name
 			end
 		end
 	end
@@ -247,9 +257,9 @@ function _M:on_checked_changed(name, state, element)
 	if name == 'craft_until_zero' and self.settings.craft_until_zero then
 		self.last_recipe = nil
 	end
-	
+
 	self:update_disabled_checkboxes(gui.get_root(element))
-	
+
 	self.settings_parser:update(self.entity, self.settings)
 end
 
@@ -284,7 +294,6 @@ function _M:on_click(name, element)
 	end
 end
 
-
 -- Other stuff
 
 function _M:read_recipe(params)
@@ -301,7 +310,7 @@ end
 function _M:read_speed(params)
 	local count = self.assembler.crafting_speed * 100
 	table.insert(params, {
-		signal = {type = 'virtual', name = config.SPEED_SIGNAL_NAME},
+		signal = { type = 'virtual', name = config.SPEED_SIGNAL_NAME },
 		count = count,
 		index = 2,
 	})
@@ -311,7 +320,7 @@ function _M:read_machine_status(params)
 	local signal = STATUS_SIGNALS[self.assembler.status or "A dummy string to avoid indexing by nil"]
 	if signal == nil then return end
 	table.insert(params, {
-		signal = {type = 'virtual', name = signal},
+		signal = { type = 'virtual', name = signal },
 		count = 1,
 		index = 3,
 	})
@@ -321,13 +330,13 @@ function _M:read_contents(params)
 	local contents = {}
 	local input_items = self.inventories.assembler and self.inventories.assembler.input
 	local output_items = self.inventories.assembler and self.inventories.assembler.output
-	
+
 	if input_items then
 		for name, count in pairs(input_items.get_contents()) do
 			contents[name] = (contents[name] or 0) + count
 		end
 	end
-	
+
 	if output_items then
 		for name, count in pairs(output_items.get_contents()) do
 			contents[name] = (contents[name] or 0) + count
@@ -342,7 +351,7 @@ function _M:read_contents(params)
 			end
 		end
 	end
-	
+
 	local i = 4
 	if contents then
 		for name, count in pairs(contents) do
@@ -356,26 +365,56 @@ function _M:read_contents(params)
 	end
 end
 
-
-function _M:set_recipe()
-	local changed, recipe
+function _M:set_recipe(params)
+	local changed, recipe, input_count
 	if self.settings.craft_until_zero then
 		if not self.last_recipe or not signals.signal_present(self.entity) then
 			local highest = signals.watch_highest_presence(self.entity)
-			if highest then recipe = self.entity.force.recipes[highest.signal.name]
-			else recipe = nil; end
+			if highest then
+				recipe = self.entity.force.recipes[highest.signal.name]
+			else
+				recipe = nil;
+			end
 			self.last_recipe = recipe
-		else recipe = self.last_recipe; end
+		else
+			recipe = self.last_recipe;
+		end
 	else
-		changed, recipe = recipe_selector.get_recipe(self.entity, nil, self.last_recipe and self.last_recipe.name)
-		if changed then self.last_recipe = recipe
-		else recipe = self.last_recipe; end
+		changed, recipe, input_count = recipe_selector.get_recipe(self.entity, nil,
+			self.last_recipe and self.last_recipe.name)
+		if changed then
+			self.last_recipe = recipe
+		else
+			recipe = self.last_recipe;
+		end
+
+		local input_signals = self.entity.get_merged_signals(defines.circuit_connector_id.combinator_input)
+
+		local signal_amount = 0
+		for i, signal in pairs(input_signals or {}) do
+			if signal.signal.name == (recipe and recipe.name) then
+				signal_amount = -signal.count --input from signals in chest are inverted. This undoes that
+			end
+		end
+		local craftable_recipe = recipe_selector.find_craftable_sub_recipe(
+			self.entity,
+			input_signals,
+			recipe,
+			(input_count or 0) - signal_amount
+		)
+
+		if craftable_recipe and self.last_recipe and self.last_recipe ~= craftable_recipe.recipe then
+			recipe = craftable_recipe.recipe
+		end
+		if not craftable_recipe or (craftable_recipe and craftable_recipe.count <= 0) then
+			recipe = nil
+		end
 	end
-	
+
 	if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
-	
+
 	local a_recipe = self.assembler.get_recipe()
-	
+
 	-- Move items if necessary
 	if a_recipe and ((not recipe) or recipe ~= a_recipe) then
 		local success, error = self:move_items()
@@ -383,32 +422,32 @@ function _M:set_recipe()
 		if self.settings.empty_inserters then
 			success, error = self:empty_inserters()
 			if not success then return self:on_chest_full(error); end
-			
+
 			local tick = game.tick + config.INSERTER_EMPTY_DELAY
 			global.cc.inserter_empty_queue[tick] = global.cc.inserter_empty_queue[tick] or {}
 			table.insert(global.cc.inserter_empty_queue[tick], self)
 		end
-		
+
 		-- Clear fluidboxes
 		if self.settings.discard_fluids then
-			for i=1, #self.assembler.fluidbox do self.assembler.fluidbox[i] = nil; end
+			for i = 1, #self.assembler.fluidbox do self.assembler.fluidbox[i] = nil; end
 		end
 	end
-	
+
 	if recipe ~= a_recipe then
-		 -- Move modules if necessary
+		-- Move modules if necessary
 		if recipe then self:move_modules(recipe); end
-		
+
 		-- Finally attempt to switch the recipe
 		self.assembler.set_recipe(recipe)
 		local new_recipe = self.assembler.get_recipe()
 		if new_recipe and new_recipe ~= recipe then self.assembler.set_recipe(nil); end --TODO: Some notification?
 	end
-	
+
 	-- Move modules and items back into the machine
 	self:insert_modules()
 	self:insert_items()
-	
+
 	return true
 end
 
@@ -429,13 +468,16 @@ function _M:insert_modules()
 	local inventory = self.inventories.module_chest
 	if inventory.is_empty() then return; end
 	local target = self.inventories.assembler.modules
-	
+
 	for i = 1, #inventory do
 		local stack = inventory[i]
 		if stack.valid_for_read then
 			local r = target.insert(stack)
-			if r < stack.count then stack.count = stack.count - r
-			else stack.clear(); end
+			if r < stack.count then
+				stack.count = stack.count - r
+			else
+				stack.clear();
+			end
 		end
 	end
 end
@@ -444,13 +486,16 @@ function _M:insert_items()
 	local inventory = self.inventories.chest
 	if not inventory or not inventory.valid or inventory.is_empty() then return; end
 	local target = self.inventories.assembler.input
-	
+
 	for i = 1, #inventory do
 		local stack = inventory[i]
 		if stack.valid_for_read then
 			local r = target.insert(stack)
-			if r < stack.count then stack.count = stack.count - r
-			else stack.clear(); end
+			if r < stack.count then
+				stack.count = stack.count - r
+			else
+				stack.clear();
+			end
 		end
 	end
 end
@@ -459,11 +504,11 @@ function _M:move_items()
 	if self.settings.wait_for_output_to_clear and not self.inventories.assembler.output.is_empty() then
 		return false, 'waiting-for-output'
 	end
-	
+
 	if self.settings.discard_items then return true; end
-	
+
 	local target = self:get_chest_inventory()
-	
+
 	-- Compensate for half-finished crafts
 	-- Do this first to avoid losing a lot of items
 	if self.assembler.crafting_progress > 0 then
@@ -471,19 +516,19 @@ function _M:move_items()
 		for _, ing in pairs(self.assembler.get_recipe().ingredients) do
 			if ing.type == 'item' then
 				if not target then return false, 'no-chest'; end
-				local r = target.insert{name = ing.name, count = ing.amount}
+				local r = target.insert { name = ing.name, count = ing.amount }
 				if r < ing.amount then success = false; end
 			end
 		end
 		self.assembler.crafting_progress = 0
 		if not success then return false, 'chest-full'; end
 	end
-	
+
 	-- Clear the assembler inventories
 	-- This may become somewhat problematic if the input items can be moved, but the output can't, since inserters will
 	-- continue to replace the items that were removed. I guess that's up to the player to deal with tho...
-	for _, inventory in pairs{self.inventories.assembler.input, self.inventories.assembler.output} do
-		for i=1, #inventory do
+	for _, inventory in pairs { self.inventories.assembler.input, self.inventories.assembler.output } do
+		for i = 1, #inventory do
 			local stack = inventory[i]
 			if stack.valid_for_read then
 				if not target then return false, 'no-chest'; end
@@ -496,7 +541,7 @@ function _M:move_items()
 			end
 		end
 	end
-	
+
 	return true
 end
 
@@ -508,19 +553,20 @@ function _M:on_chest_full(error)
 		self.entity.surface.create_entity {
 			name = 'flying-text',
 			position = self.entity.position,
-			text = {'crafting_combinator_gui.switching-stuck:'..(error or 'chest-full')},
-			color = {255, 0, 0},
+			text = { 'crafting_combinator_gui.switching-stuck:' .. (error or 'chest-full') },
+			color = { 255, 0, 0 },
 		}
 	end
 end
 
 function _M:empty_inserters()
 	local target = self:get_chest_inventory()
-	
+
 	for _, inserter in pairs(self.assembler.surface.find_entities_filtered {
-				area = util.area(self.assembler.prototype.selection_box):expand(config.INSERTER_SEARCH_RADIUS) + self.assembler.position,
-				type = 'inserter',
-			}) do
+		area = util.area(self.assembler.prototype.selection_box):expand(config.INSERTER_SEARCH_RADIUS) +
+			self.assembler.position,
+		type = 'inserter',
+	}) do
 		if inserter.drop_target == self.assembler then
 			local stack = inserter.held_stack
 			if stack.valid_for_read and not self.settings.discard_items then
@@ -531,7 +577,9 @@ function _M:empty_inserters()
 					return false, 'chest-full'
 				end
 				stack.clear()
-			else stack.clear(); end
+			else
+				stack.clear();
+			end
 		end
 	end
 	return true
@@ -545,21 +593,23 @@ function _M:find_assembler(assembler_to_ignore)
 	if self.assembler and (self.assembler == assembler_to_ignore or self.assembler.prototype.fixed_recipe) then
 		self.assembler = nil
 	end
-	
+
 	if self.assembler then
 		self.inventories.assembler = {
 			output = self.assembler.get_inventory(defines.inventory.assembling_machine_output),
 			input = self.assembler.get_inventory(defines.inventory.assembling_machine_input),
 			modules = self.assembler.get_inventory(defines.inventory.assembling_machine_modules),
 		}
-	else self.inventories.assembler = {}; end
+	else
+		self.inventories.assembler = {};
+	end
 end
 
 function _M:find_chest(chest_to_ignore)
 	local direction = util.direction(self.entity.direction):rotate(CHEST_DIRECTIONS[self.settings.chest_position])
 	self.chest = self.entity.surface.find_entities_filtered {
 		position = util.position(self.entity.position):shift(direction, config.CHEST_DISTANCE),
-		type = {'container', 'logistic-container'},
+		type = { 'container', 'logistic-container' },
 	}[1]
 	if self.chest == chest_to_ignore then self.chest = nil; end
 	self.inventories.chest = self.chest and self.chest.get_inventory(defines.inventory.chest)
@@ -572,16 +622,13 @@ function _M:get_chest_inventory()
 	return self.inventories.chest
 end
 
-
 function _M:update_inner_positions()
 	settings_parser.move_entity(self.entity, self.module_chest.position)
 	self.module_chest.teleport(self.entity.position)
 end
 
-
 function _M:copy(source)
 	self.inventories.module_chest.set_bar(source.inventories.module_chest.get_bar())
 end
-
 
 return _M
