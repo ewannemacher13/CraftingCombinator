@@ -227,17 +227,14 @@ function _M:find_ingredients_and_products()
 	self.last_name = recipe and recipe.name
 	self.last_count = input_count
 
-	if self.settings.output_shortage and recipe and recipe.name == 'locomotive' then
+	if self.settings.output_shortage and recipe then
 		local input_signals = self.entity.get_merged_signals(defines.circuit_connector_id.combinator_input)
 		self:get_needed_ingredient_signals(self.entity, recipe, input_count, input_signals)
-
-		game.print('input_signals')
-		game.print(serpent.block(input_signals))
 
 		local params = {}
 		local i = 1;
 		for _, sig in pairs(input_signals or {}) do
-			if sig.count > 0 then
+			if sig.count > 0 and sig.signal.name ~= recipe.name then
 				table.insert(params, {
 					signal = sig.signal,
 					count = util.simulate_overflow(sig.count),
