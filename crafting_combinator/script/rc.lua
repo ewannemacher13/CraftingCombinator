@@ -16,7 +16,7 @@ _M.settings_parser = settings_parser {
 	divide_by_output = { 'o', 'bool' },
 	differ_output = { 'd', 'bool' },
 	time_multiplier = { 't', 'number' },
-	output_shortage = {'s', 'bool'},
+	output_shortage = { 's', 'bool' },
 }
 
 
@@ -177,68 +177,43 @@ function _M:find_recipe()
 	self.control_behavior.parameters = params
 end
 
-function _M:find_all_ingredients(entity, input_signals, input_ingredients, input_count, print)
-	-- input_ingredients = input_ingredients or {}
-	local ret_ingredients = {}
-	local crafting_multiplier = input_count or 1
-	if not input_ingredients then
-		input_ingredients = {}
-		for i, signal in pairs(input_signals or {}) do
-			if signal.count > 0 then
-				if input_ingredients[signal.signal.name] then
-					input_ingredients[signal.signal.name].amount = input_ingredients[signal.signal.name].amount +
-						signal.count
-				else
-					input_ingredients[signal.signal.name] = {
-						name = signal.signal.name,
-						type = signal.signal.type,
-						amount = signal.count,
-					}
-				end
-				signal.count = 0
-			end
-		end
-	end
+function _M:get_needed_ingredient_signals(entity, recipe, qty, input_signals, ingredients, depth)
+	depth = depth or 0
+	ingredients = ingredients or {}
+	input_signals = input_signals or {}
 
-	for i, ing in pairs(input_ingredients or {}) do
-		local amount = ing.amount * crafting_multiplier
+	if not recipe then return end
 
-		local signal_amount = 0
-		for i, signal in pairs(input_signals) do
-			if signal.signal.name == ing.name then
-				signal_amount = signal.count
-				signal.count = signal.count + amount
+	for _, ing in pairs(recipe.ingredients or {}) do
+		local amount = ing.amount * qty
+
+		local signal = nil
+		for _, s in pairs(input_signals) do
+			if s.signal.name == ing.name then
+				signal = s
 				break
 			end
 		end
-
-		local amount_needed = amount + signal_amount
-
+		local amount_needed = amount + ((signal and signal.count < 0 and signal.count) or 0) -- signal.count is inverted
 		if amount_needed > 0 then
-			if print then
-				game.print(string.format('need %s qty: %d', ing.name, amount_needed))
+			if signal then
+				signal.count = signal.count + amount
+			else
+				table.insert(input_signals, {
+					["signal"] = {
+						name = ing.name,
+						type = ing.type,
+					},
+					count = amount_needed,
+				})
 			end
-			local recipe = entity.force.recipes[ing.name]
-			if recipe and (recipe.hidden or not recipe.enabled) then recipe = nil; end
-			if recipe then
-				if ret_ingredients[ing.name] then
-					ret_ingredients[ing.name].amount = (ret_ingredients[ing.name].amount or 0) + amount_needed
-				else
-					ing.amount = amount_needed
-					ret_ingredients[ing.name] = ing
-				end
-				for name, sub_ing in pairs(self:find_all_ingredients(entity, input_signals, recipe.ingredients, amount_needed, print)) do
-					if ret_ingredients[name] then
-						ret_ingredients[name].amount = (ret_ingredients[name].amount or 0) + sub_ing.amount
-					else
-						ret_ingredients[name] = sub_ing
-					end
-				end
+			ingredients[ing.name] = (ingredients[ing.name] or 0) + amount_needed
+
+			if entity.force.recipes[ing.name] then
+				self:get_needed_ingredient_signals(entity, entity.force.recipes[ing.name], amount_needed, input_signals, ingredients, depth + 1)
 			end
 		end
 	end
-
-	return ret_ingredients
 end
 
 function _M:find_ingredients_and_products()
@@ -252,19 +227,24 @@ function _M:find_ingredients_and_products()
 	self.last_name = recipe and recipe.name
 	self.last_count = input_count
 
-	if self.settings.output_shortage then
+	if self.settings.output_shortage and recipe and recipe.name == 'locomotive' then
 		local input_signals = self.entity.get_merged_signals(defines.circuit_connector_id.combinator_input)
-		local ingredients = self:find_all_ingredients(self.entity, input_signals) or {}
+		self:get_needed_ingredient_signals(self.entity, recipe, input_count, input_signals)
+
+		game.print('input_signals')
+		game.print(serpent.block(input_signals))
 
 		local params = {}
 		local i = 1;
-		for name, ing in pairs(ingredients) do
-			table.insert(params, {
-				signal = { type = ing.type, name = name },
-				count = util.simulate_overflow(ing.amount),
-				index = i,
-			});
-			i = i + 1;
+		for _, sig in pairs(input_signals or {}) do
+			if sig.count > 0 then
+				table.insert(params, {
+					signal = sig.signal,
+					count = util.simulate_overflow(sig.count),
+					index = i,
+				});
+				i = i + 1;
+			end
 		end
 		self.control_behavior.parameters = params
 		return
